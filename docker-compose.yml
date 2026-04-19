@@ -1,4 +1,6 @@
 services:
+
+  # ─── ZOOKEEPER ─────────────────────────────────────────────────────────────
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -7,6 +9,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+
+  # ─── KAFKA ─────────────────────────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
@@ -22,6 +26,8 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # ─── HADOOP NAMENODE ───────────────────────────────────────────────────────
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: namenode
@@ -34,6 +40,8 @@ services:
     volumes:
       - namenode_data:/hadoop/dfs/name
       - ./data:/app/data
+
+  # ─── HADOOP DATANODE ───────────────────────────────────────────────────────
   datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: datanode
@@ -44,6 +52,8 @@ services:
       SERVICE_PRECONDITION: "namenode:9870"
     volumes:
       - datanode_data:/hadoop/dfs/data
+
+  # ─── KAFKA PRODUCER (Python) ───────────────────────────────────────────────
   producer:
     build: ./producer
     container_name: producer
@@ -51,6 +61,8 @@ services:
       - kafka
     volumes:
       - ./data:/app/data
+
+  # ─── SPARK ─────────────────────────────────────────────────────────────────
   spark:
     image: apache/spark:latest
     container_name: spark
@@ -59,7 +71,48 @@ services:
     volumes:
       - ./spark:/app
     working_dir: /app
-    command: tail -f /dev/null      
+    command: tail -f /dev/null
+
+  # ─── MYSQL (base de données relationnelle pour Sqoop) ──────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: bankdb
+      MYSQL_USER: sqoop_user
+      MYSQL_PASSWORD: sqoop_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+      - ./data:/var/lib/mysql-files
+
+  # ─── SQOOP (import/export MySQL ↔ HDFS) ────────────────────────────────────
+  sqoop:
+    build: ./sqoop
+    container_name: sqoop
+    platform: linux/amd64
+    depends_on:
+      - namenode
+      - mysql
+    environment:
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+    command: tail -f /dev/null
+
+  # ─── FLUME (collecte des logs → HDFS) ──────────────────────────────────────
+  flume:
+    build: ./flume
+    container_name: flume
+    platform: linux/amd64
+    depends_on:
+      - namenode
+    volumes:
+      - ./logs:/logs
+    command: tail -f /dev/null
+
 volumes:
   namenode_data:
   datanode_data:
+  mysql_data:
